@@ -1,0 +1,109 @@
+#Requires AutoHotkey v2.0
+
+; Forward-deklarasjoner for å tilfredsstille #Warn i delte moduler
+global SpdIdx, TypDelay, fartsGui, txtL1, txtL2, Themes, StlIdx
+
+; ==============================================================================
+; SEKSJON 1: DET DIGITALE HASTIGHETSKONTROLLPANELET (F7)
+; ==============================================================================
+TriggerF7Fartspanel() {
+    global SpdIdx, TypDelay, fartsGui, txtL1, txtL2
+    try {
+        if IsObject(fartsGui) and WinExist("ahk_id " fartsGui.Hwnd) {
+            fartsGui.Destroy()
+            fartsGui := ""
+            return
+        }
+    }
+    try {
+        SoundPlay("*64")
+        fartsGui := Gui("-Caption -Border +AlwaysOnTop"), fartsGui.BackColor := "1A1A1A"
+        OnMessage(0x0201, WM_LBUTTONDOWN_FARTSGUI_COMPACT)
+        fartsGui.MarginX := 20, fartsGui.MarginY := 20, fartsGui.SetFont("s10 cWhite Bold", "Segoe UI")
+        fartsGui.Add("Text", "w320", "Slider 1: Disk-forsinkelse (1 - 11):")
+        
+        ; ⚡ RANGE 1-11: Nivå 11 aktiverer absolutt 0ms forsinkelse live i utpakkingsmotoren
+        minSlider1 := fartsGui.Add("Slider", "w300 Range1-11 ToolTip +Background1A1A1A", SpdIdx)
+        minSlider1.OnEvent("Change", HåndterDiskMotorKompakt)
+        fartsGui.SetFont("s9 cAAAAAA w400")
+        txtL1 := fartsGui.Add("Text", "w300 x20 y75", "Diskfart: " SpdIdx (SpdIdx = 11 ? " (0ms Turbo)" : ""))
+        
+        fartsGui.SetFont("s10 cWhite Bold")
+        fartsGui.Add("Text", "w320 x20 y110", "Slider 2: Taste-delay (0 - 250ms):")
+        minSlider2 := fartsGui.Add("Slider", "w300 Range0-250 ToolTip +Background1A1A1A", TypDelay)
+        minSlider2.OnEvent("Change", HåndterTasteMotorKompakt)
+        fartsGui.SetFont("s9 cAAAAAA w400")
+        txtL2 := fartsGui.Add("Text", "w300 x20 y175", "Taste-delay: " TypDelay " ms")
+        
+        fartsGui.SetFont("s10 cWhite Bold")
+        fartsGui.Add("Button", "w300 xm y+20 +Background333333", "✖ Lukk Fartspanel").OnEvent("Click", HukkLukkFartsKallback)
+        fartsGui.Show()
+    }
+}
+
+HåndterDiskMotorKompakt(s, *) {
+    try {
+        global SpdIdx := s.Value
+        txtL1.Value := "Diskfart: " s.Value (s.Value = 11 ? " (0ms Turbo)" : "")
+    }
+}
+
+HåndterTasteMotorKompakt(s, *) {
+    try {
+        global TypDelay := s.Value
+        txtL2.Value := "Taste-delay: " s.Value " ms"
+    }
+}
+
+HukkLukkFartsKallback(*) {
+    try {
+        if IsObject(fartsGui)
+            fartsGui.Destroy()
+        global fartsGui := ""
+    }
+}
+
+WM_LBUTTONDOWN_FARTSGUI_COMPACT(wParam, lParam, msg, hwnd) {
+    global fartsGui
+    try {
+        if (IsObject(fartsGui) and hwnd = fartsGui.Hwnd)
+            PostMessage(0x00A1, 2, 0, , "ahk_id " fartsGui.Hwnd)
+    }
+}
+
+; Overstyrer standard F7 tastaturregister og ruter signalet direkte til fartspanelet
+F7::TriggerF7Fartspanel()
+
+; ==============================================================================
+; SEKSJON 2: DET INTERNE TEMA- OG MENYSYSTEMET (F10)
+; ==============================================================================
+F10:: {
+    global Themes
+    try {
+        m := Menu()
+        stilerIkoner := ["🌙 ", "⚡ ", "🌸 ", "📟 ", "💻 ", "⚙️ ", "🌋 ", "🔥 ", "🐳 ", "⚫ "]
+        for idx, t in Themes
+            m.Add(stilerIkoner[idx] . t.n, KlikketTemaKallbackKompakt)
+        m.Add()
+        m.Add("Avbryt", (*) => SoundPlay("*64")), m.Show()
+    }
+}
+
+KlikketTemaKallbackKompakt(ItemName, ItemPos, MyMenu) {
+    global StlIdx, Themes
+    try {
+        StlIdx := ItemPos
+        try {
+            SoundPlay(Themes[ItemPos].HasProp("s") ? Themes[ItemPos].s : Themes[ItemPos].sound)
+        }
+        if HasFunc("UpdStl")
+            UpdStl(true)
+        ToolTip("Stil aktivert: " Themes[ItemPos].n)
+        SetTimer(() => ToolTip(), -2000)
+    }
+}
+
+HasFunc(FuncName) {
+    try return IsObject(Func(FuncName))
+    return false
+}
