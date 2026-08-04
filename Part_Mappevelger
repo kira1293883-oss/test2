@@ -1,0 +1,64 @@
+#Requires AutoHotkey v2.0
+
+; Forward-deklarasjoner for å tilfredsstille #Warn i delte moduler
+global kildeMappe, suksessMappe, feiletMappe, SrcM, SucM, FailM
+
+; ==============================================================================
+; SEKSJON 1: SYNKRONISERING OG OPPRETTELSE AV DRIFTSMAPPER
+; ==============================================================================
+SjekkOgOpprettMapper() {
+    global kildeMappe, suksessMappe, feiletMappe, SrcM, SucM, FailM
+    
+    ; Synkroniserer de interne mappearrayene direkte mot konfigurasjonens kildestier
+    if (SrcM != "") {
+        kildeMappe := SrcM
+        suksessMappe := SucM
+        feiletMappe := FailM
+    }
+    
+    ; Tvinger Windows til å opprette mappelokasjonene dersom de ikke eksisterer
+    if (kildeMappe != "" and !DirExist(kildeMappe))
+        DirCreate(kildeMappe)
+    if (suksessMappe != "" and !DirExist(suksessMappe))
+        DirCreate(suksessMappe)
+    if (feiletMappe != "" and !DirExist(feiletMappe))
+        DirCreate(feiletMappe)
+}
+
+; ==============================================================================
+; SEKSJON 2: LIVE DIALOGFORNYELSE FOR MAPPER (F9 HURTIGTAST)
+; ==============================================================================
+HåndterMappeSnarveiF9() {
+    global kildeMappe, suksessMappe, feiletMappe, SrcM, SucM, FailM
+    SoundPlay("*64")
+    
+    ; 1. Interaktivt valg av kildemappe (Fra-mappe)
+    valgKilde := DirSelect("*" . kildeMappe, 3, "Velg kildemappe (FRA):")
+    if (valgKilde = "")
+        return
+    kildeMappe := RegExReplace(valgKilde, "\\$")
+    SrcM := kildeMappe
+    
+    ; 2. Interaktivt valg av suksessmappe (Lagringsmappe)
+    valgSuksess := DirSelect("*" . suksessMappe, 3, "Velg suksessmappe:")
+    if (valgSuksess = "")
+        return
+    suksessMappe := RegExReplace(valgSuksess, "\\$")
+    SucM := suksessMappe
+    
+    ; 3. Interaktivt valg av feiletmappe (Ugyldige arkiver)
+    valgFeilet := DirSelect("*" . feiletMappe, 3, "Velg feiletmappe:")
+    if (valgFeilet = "")
+        return
+    feiletMappe := RegExReplace(valgFeilet, "\\$")
+    FailM := feiletMappe
+    
+    ; Kjører validering og fysisk opprettelse i Windows-filsystemet
+    SjekkOgOpprettMapper()
+    
+    SoundPlay("*64")
+    MsgBox("Lokasjoner synkronisert i Realtime-RAM!", "Viking Mappevelger", 64)
+}
+
+; Overstyrer standard F9 tastaturregister og ruter signalet inn til mappelogikken
+F9::HåndterMappeSnarveiF9()
