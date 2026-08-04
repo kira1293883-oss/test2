@@ -1,0 +1,304 @@
+#Requires AutoHotkey v2.0
+
+; Forward-deklarasjoner for å tilfredsstille #Warn i delte moduler
+global PList, MG, EDF, PLB, Favs, KunFavModus, SKF, BtnA5, GullModus, SessionFile, SrcM
+global btnDynamicCopy := "" ; Global referanse til den dynamiske kopieringsknappen
+
+; ==============================================================================
+; SEKSJON 1: UTKLIPPSTAVLE-FANGST (LIVE CLIPBOARD)
+; ==============================================================================
+CatchClip(type) {
+    global PList, MG, EDF, GullModus
+    if (GullModus) {
+        Sleep(150)
+        tx := ""
+        try {
+            tx := String(A_Clipboard)
+        } catch {
+            return
+        }
+        try {
+            tx := RegExReplace(tx, "[^\x20-\x7E\x{00A0}-\x{00FF}]", "")
+            if (RegExMatch(tx, "i)https?://") and !RegExMatch(tx, "i)^Password:"))
+                return
+                
+            cl := RegExReplace(tx, "(?i)^Password:\s*°*")
+            cl := StrReplace(cl, "°", "")
+            cl := StrReplace(cl, "$", "")
+            cl := Trim(cl)
+            
+            if (cl != "") {
+                if (StrLen(cl) > 50)
+                    cl := SubStr(cl, 1, 47) "..."
+                    
+                for p in PList {
+                    if (p = cl)
+                        return
+                }
+                PList.InsertAt(1, cl)
+                FjernDuplikaterFraListen()
+                ShowL()
+            }
+        }
+    }
+}
+
+; ==============================================================================
+; SEKSJON 2: LISTEHÅNDTERING OG LIVE-SØK (F6 GRENRESNITT)
+; ==============================================================================
+ShowL(q := "") {
+    global PList, PLB, Favs, KunFavModus
+    try if (IsObject(PLB) and HasProp(PLB, "Delete")) {
+        PLB.Delete()
+        for idx, p in PList {
+            if !IsObject(PLB) or !HasProp(PLB, "Add")
+                return
+            if (q != "" and !InStr(p, q) and q != " Søk i lagrede koder:")
+                continue
+            if (KunFavModus and !Favs.Has(p))
+                continue
+            PLB.Add(["[" idx "] " (Favs.Has(p) ? "⭐ " : "") p])
+        }
+    }
+}
+
+MassP(txt) {
+    global PList
+    try if txt != "" and txt != " Søk i lagrede koder:" {
+        Loop Parse, txt, "`n", "`r" {
+            cl := Trim(A_LoopField)
+            if (RegExMatch(cl, "i)https?://") and !RegExMatch(cl, "i)^Password:"))
+                continue
+                
+            cl := Trim(StrReplace(StrReplace(RegExReplace(cl, "(?i)^Password:\s*°*"), "°", ""), "\$", ""))
+            if cl != ""
+                PList.Push((StrLen(cl) > 50) ? SubStr(cl, 1, 47) "..." : cl)
+        }
+        FjernDuplikaterFraListen()
+        ShowL()
+    }
+}
+
+FjernDuplikaterFraListen() {
+    global PList
+    try {
+        u := Map(), r := []
+        for p in PList {
+            if !u.Has(p)
+                u[p] := true, r.Push(p)
+        }
+        PList := r
+    }
+}
+
+; ==============================================================================
+; ⚡ DYNAMISK TEGNOVERVÅKNING (4000 - 6000 TEGN SIKRING - REVERSERT VALG)
+; ==============================================================================
+OvervåkTekstLengdeLive(ctl, *) {
+    global btnDynamicCopy, MG
+    try {
+        lengde := StrLen(ctl.Value)
+        
+        if (lengde >= 4000) {
+            if (btnDynamicCopy = "") {
+                btnDynamicCopy := MG.Add("Button", "x30 y270 w320 h32 -Theme +BackgroundD4AF37 c000000 Bold", "📋 KOPIER DELKODE (" lengde " tegn)")
+                btnDynamicCopy.OnEvent("Click", UtførSikkerBolkKopiering)
+                SoundPlay("*64") 
+            } else {
+                btnDynamicCopy.Text := "📋 KOPIER DELKODE (" lengde " / 6000 tegn)"
+                if (lengde >= 5500) {
+                    btnDynamicCopy.Opt("+Background721C24 cWhite")
+                } else {
+                    btnDynamicCopy.Opt("+BackgroundD4AF37 c000000")
+                }
+            }
+        } else {
+            if (btnDynamicCopy != "") {
+                btnDynamicCopy.Destroy()
+                btnDynamicCopy := ""
+            }
+        }
+    }
+}
+
+UtførSikkerBolkKopiering(*) {
+    global EDF, btnDynamicCopy
+    try {
+        if IsObject(EDF) and EDF.Value != "" {
+            A_Clipboard := EDF.Value
+            EDF.Value := ""
+            if (btnDynamicCopy != "") {
+                btnDynamicCopy.Destroy()
+                btnDynamicCopy := ""
+            }
+            SoundPlay("*64")
+            ToolTip("📋 Tekstbolk kopiert og feltet er klargjort på nytt!")
+            SetTimer(() => ToolTip(), -2500)
+        }
+    }
+}
+
+; ==============================================================================
+; SEKSJON 3: FAVORITTER OG SLETTERUTINER
+; ==============================================================================
+ToggleKunFavoritter(*) {
+    global KunFavModus, SKF
+    try {
+        KunFavModus := !KunFavModus
+        ShowL(SKF.Value)
+        ToolTip(KunFavModus ? "KUN Favs" : "Alle")
+        SetTimer(() => ToolTip(), -1500)
+    }
+}
+
+SetFav(val) {
+    global PList, Favs
+    try if val != "" and RegExMatch(val, "]\s+(.+)", &m) {
+        p := RegExReplace(m.1, "^⭐\s*")
+        if Favs.Has(p)
+            Favs.Delete(p)
+        else
+            Favs[p] := true
+        ShowL()
+    }
+}
+
+CopyP(*) {
+    global PLB, EDF
+    try {
+        if (IsObject(PLB) and HasProp(PLB, "Text") and PLB.Text != "" and RegExMatch(PLB.Text, "]\s*(⭐\s*)?(.+)", &m)) {
+            A_Clipboard := m.2
+        } else if (IsObject(EDF) and HasProp(EDF, "Value") and EDF.Value != "") {
+            A_Clipboard := EDF.Value
+        }
+    }
+}
+
+TomManueltFelt(*) {
+    global EDF, btnDynamicCopy
+    try {
+        if IsObject(EDF) {
+            EDF.Value := ""
+            if (btnDynamicCopy != "") {
+                btnDynamicCopy.Destroy()
+                btnDynamicCopy := ""
+            }
+            SoundPlay("*48")
+        }
+    }
+}
+
+; ==============================================================================
+; SEKSJON 4: AUTO-FANGST KONTROLLER
+; ==============================================================================
+ToggleGullModus(*) {
+    global GullModus, BtnA5
+    try {
+        GullModus := !GullModus
+        SoundPlay(GullModus ? "*64" : "*48")
+        BtnA5.Opt(GullModus ? "+BackgroundD4AF37 c000000" : "+Background4A4A4A cWhite")
+        BtnA5.Text := GullModus ? "⚡ Auto-Fangst: PÅ" : "⚡ Auto-Fangst: AV"
+    }
+}
+
+; ==============================================================================
+; SEKSJON 5: SLETTEBEKREFTELSE (VIS/SKJUL GUI ELEMENTER FOR ALL / VALGT)
+; ==============================================================================
+VisFjernAlleValg(*) {
+    global btnDelAll, btnDelAllYes, btnDelAllNo
+    try {
+        btnDelAll.Opt("+Hidden")
+        btnDelAllYes.Opt("-Hidden")
+        btnDelAllNo.Opt("-Hidden")
+        SoundPlay("*64")
+    }
+}
+
+SkjulFjernAlleValg(*) {
+    global btnDelAll, btnDelAllYes, btnDelAllNo
+    try {
+        btnDelAllYes.Opt("+Hidden")
+        btnDelAllNo.Opt("+Hidden")
+        btnDelAll.Opt("-Hidden")
+        SoundPlay("*48")
+    }
+}
+
+ClearAllP(*) {
+    global PList, EDF, btnDynamicCopy
+    try {
+        PList := []
+        ShowL()
+        if IsObject(EDF) {
+            EDF.Value := ""
+        }
+        if (btnDynamicCopy != "") {
+            btnDynamicCopy.Destroy()
+            btnDynamicCopy := ""
+        }
+        SoundPlay("*16")
+        SkjulFjernAlleValg()
+    }
+}
+
+VisFjernValgtValg(*) {
+    global btnDelSel, btnDelSelYes, btnDelSelNo, PLB, PList
+    try {
+        if (PList.Length = 0 or !IsObject(PLB) or !HasProp(PLB, "Value") or PLB.Value = 0)
+            return
+        btnDelSel.Opt("+Hidden")
+        btnDelSelYes.Opt("-Hidden")
+        btnDelSelNo.Opt("-Hidden")
+        SoundPlay("*64")
+    }
+}
+
+SkjulFjernValgtValg(*) {
+    global btnDelSel, btnDelSelYes, btnDelSelNo
+    try {
+        btnDelSelYes.Opt("+Hidden")
+        btnDelSelNo.Opt("+Hidden")
+        btnDelSel.Opt("-Hidden")
+        SoundPlay("*48")
+    }
+}
+
+HåndterDelP(*) {
+    global PLB, PList
+    try if IsObject(PLB) {
+        sletteIndex := (PLB.Value = 0) ? 1 : PLB.Value
+        if (PList.Length >= sletteIndex) {
+            PList.RemoveAt(sletteIndex)
+            ShowL()
+            SoundPlay("*16")
+        }
+        SkjulFjernValgtValg()
+    }
+}
+
+RunDiag() {
+    global SrcM
+    try {
+        MsgBox(FileExist(A_ProgramFiles "\WinRAR\WinRAR.exe") ? "✅ WinRAR OK! Mappe: " SrcM : "⚠️ WinRAR Mangler!", "Diagnose", 4096)
+    }
+}
+
+; ==============================================================================
+; SEKSJON 6: SIKKER INNLASTING FRA FIL VED OPPSTART
+; ==============================================================================
+LastInnLagredePassordSikkert() {
+    global SessionFile, PList
+    try {
+        if FileExist(SessionFile) {
+            innhold := FileRead(SessionFile, "UTF-8")
+            Loop Parse, innhold, "`n", "`r" {
+                linje := Trim(A_LoopField)
+                if (linje != "") {
+                    PList.Push(linje)
+                }
+            }
+            FjernDuplikaterFraListen()
+            ShowL()
+        }
+    }
+}
