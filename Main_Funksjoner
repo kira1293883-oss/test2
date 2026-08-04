@@ -1,0 +1,104 @@
+#Requires AutoHotkey v2.0
+
+; Forward-deklarasjoner for å tilfredsstille #Warn i delte moduler
+global PList, fartsGui, cfg, AutoClose_F1, AutoClose_F7, Themes, StlIdx, MG, EDF, SKF, PLB, Lbl1, Lbl2, HK_Pause, HK_Extract, HK_Gui, HK_Speed, ErPau, sliderTekst1, sliderTekst2, txtL1, txtL2, TypDelay, SpdIdx
+
+; ==============================================================================
+; SEKSJON 1: LUKKEFUNKSJONER OG HJELPERE
+; ==============================================================================
+LukkVindusanleggMappe(*) {
+    global MG
+    try {
+        if IsObject(MG) {
+            MG.Destroy()
+            MG := ""
+        }
+    } catch {
+        global MG := ""
+    }
+}
+
+; 🔒 AUTO-CLOSE: Sjekker flyktige vinduer (F1 og F7). F6-passordpanelet forblir urørt!
+SjekkKlikkUtenfor() {
+    global fartsGui, cfg, AutoClose_F1, AutoClose_F7
+    try {
+        if (IsSet(AutoClose_F7) and AutoClose_F7 and IsObject(fartsGui) and WinExist("ahk_id " fartsGui.Hwnd) and !WinActive("ahk_id " fartsGui.Hwnd)) {
+            fartsGui.Destroy()
+            fartsGui := ""
+        }
+    }
+    try {
+        if (IsSet(AutoClose_F1) and AutoClose_F1 and IsObject(cfg) and HasProp(cfg, "Hwnd") and WinExist("ahk_id " cfg.Hwnd)) {
+            if (!WinActive("ahk_id " cfg.Hwnd)) {
+                cfg.Destroy()
+                cfg := ""
+            }
+        }
+    }
+}
+
+; ==============================================================================
+; SEKSJON 2: TEMA- OG RENDERINGSMOTOR
+; ==============================================================================
+UpdStl(t) {
+    global Themes, StlIdx, MG, EDF, SKF, PLB, Lbl1, Lbl2
+    static o := 0
+    
+    ; 🔒 #WARN FIKS: Sjekker IsSet() og IsObject() for alle GUI-kontroller før endring
+    try if (IsObject(MG) and WinExist("ahk_id " MG.Hwnd) and IsSet(StlIdx) and IsSet(Themes) and (t or StlIdx != o)) {
+        o := StlIdx, st := Themes[StlIdx], MG.BackColor := st.bg
+        try {
+            if (IsSet(Lbl1) and IsObject(Lbl1)) {
+                Lbl1.Opt("+BackgroundFFFFFF")
+                Lbl1.Text := " Lim inn passord manuelt:"
+            }
+        }
+        try {
+            if (IsSet(Lbl2) and IsObject(Lbl2)) {
+                Lbl2.Opt("+BackgroundFFFFFF")
+                Lbl2.Text := " Søk i lagrede koder:"
+            }
+        }
+        if (IsSet(EDF) and IsObject(EDF))
+            EDF.Opt("+Background" st.ft " c" st.fg)
+        if (IsSet(SKF) and IsObject(SKF))
+            SKF.Opt("+Background" st.ft " c" st.fg)
+        if (IsSet(PLB) and IsObject(PLB))
+            PLB.Opt("+Background" st.ft " c" st.fg)
+            
+        WinRedraw("ahk_id " MG.Hwnd)
+    }
+}
+
+; ==============================================================================
+; SEKSJON 3: PAUSE- OG HURTIGTASTKONTROLL
+; ==============================================================================
+LagreNyeHurtigtaster(g, p1, p2, p3, p4) {
+    global HK_Pause, HK_Extract, HK_Gui, HK_Speed
+    gamleKnapper := [HK_Pause, HK_Extract, HK_Gui, HK_Speed]
+    for k in gamleKnapper {
+        try Hotkey(k, "Off")
+    }
+    try {
+        global HK_Pause := p1, HK_Extract := p2, HK_Gui := p3, HK_Speed := p4
+        Hotkey(HK_Pause, (*)=>CallPause())
+        Hotkey(HK_Extract, (*)=>TriggerUtpakkingLive())
+        Hotkey(HK_Gui, (*)=>TriggerF6Senter())
+        Hotkey(HK_Speed, (*)=>TriggerF7Fartspanel())
+        g.Destroy()
+        SoundPlay("*64")
+        ToolTip("Oppdatert!")
+        SetTimer(() => ToolTip(), -2000)
+    } catch {
+        ToolTip("⚠️ FEIL TASTER!")
+        SetTimer(() => ToolTip(), -2000)
+    }
+}
+
+CallPause() {
+    global ErPau
+    ErPau := !ErPau
+    SoundPlay(ErPau ? "*48" : "*64")
+    ToolTip(ErPau ? "⏸️ SYSTEMET ER PAUSET" : "▶️ Systemet fortsetter...")
+    SetTimer(() => ToolTip(), -1500)
+}
